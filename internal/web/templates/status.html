@@ -1,0 +1,102 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta http-equiv="refresh" content="60">
+<title>{{.Title}}</title>
+<link rel="alternate" type="application/json" href="api/status">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 16 16%22%3E%3Ccircle cx=%228%22 cy=%228%22 r=%226%22 fill=%22%232da44e%22/%3E%3C/svg%3E">
+<style>
+  :root {
+    --bg: #f6f8fa; --card: #fff; --text: #1f2328; --muted: #656d76; --line: #d0d7de;
+    --ok: #2da44e; --warn: #d4a72c; --bad: #cf222e; --none: #d0d7de; --spark: #0969da;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #0d1117; --card: #161b22; --text: #e6edf3; --muted: #8d96a0; --line: #30363d;
+      --none: #30363d; --spark: #4493f8;
+    }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--text);
+         font: 15px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif; }
+  main { max-width: 860px; margin: 0 auto; padding: 32px 16px 48px; }
+  h1 { font-size: 28px; margin: 0 0 20px; }
+  .banner { border-radius: 8px; padding: 16px 20px; color: #fff; font-weight: 600; font-size: 17px; margin-bottom: 28px; }
+  .banner.ok { background: var(--ok); } .banner.warn { background: var(--warn); color: #1f2328; }
+  .banner.bad { background: var(--bad); } .banner.none { background: var(--muted); }
+  .card { background: var(--card); border: 1px solid var(--line); border-radius: 8px; padding: 18px 20px; margin-bottom: 14px; }
+  .head { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; flex-wrap: wrap; }
+  .name { font-weight: 600; font-size: 16px; }
+  .target { color: var(--muted); font-size: 13px; word-break: break-all; }
+  .pill { font-size: 12px; font-weight: 600; padding: 2px 10px; border-radius: 999px; color: #fff; text-transform: uppercase; }
+  .pill.up { background: var(--ok); } .pill.down { background: var(--bad); } .pill.unknown { background: var(--muted); }
+  .error { color: var(--bad); font-size: 13px; margin-top: 4px; }
+  .bars { display: flex; gap: 2px; height: 34px; margin: 14px 0 6px; }
+  .bars span { flex: 1; border-radius: 2px; background: var(--none); }
+  .bars .ok { background: var(--ok); } .bars .warn { background: var(--warn); } .bars .bad { background: var(--bad); }
+  .scale { display: flex; justify-content: space-between; color: var(--muted); font-size: 12px; }
+  .stats { display: flex; gap: 24px; flex-wrap: wrap; align-items: center; margin-top: 12px; font-size: 13px; color: var(--muted); }
+  .stats b { color: var(--text); font-weight: 600; }
+  .spark { margin-left: auto; max-width: 100%; }
+  .spark polyline { fill: none; stroke: var(--spark); stroke-width: 1.5; stroke-linejoin: round; }
+  h2 { font-size: 18px; margin: 32px 0 12px; }
+  .incident { padding: 10px 0; border-top: 1px solid var(--line); font-size: 14px; }
+  .incident:first-child { border-top: 0; }
+  .incident .when { color: var(--muted); font-size: 13px; }
+  .ongoing { color: var(--bad); font-weight: 600; }
+  footer { color: var(--muted); font-size: 12px; margin-top: 32px; text-align: center; }
+  footer a { color: inherit; }
+</style>
+</head>
+<body>
+<main>
+  <h1>{{.Title}}</h1>
+  <div class="banner {{.Class}}">{{.Overall}}</div>
+
+  {{range .Checks}}
+  <section class="card" id="{{.ID}}">
+    <div class="head">
+      <div>
+        <div class="name">{{.Name}}</div>
+        <div class="target">{{.Target}}</div>
+      </div>
+      <span class="pill {{.Status}}">{{.Status}}</span>
+    </div>
+    {{if .LastError}}<div class="error">{{.LastError}}</div>{{end}}
+    <div class="bars" aria-label="Daily uptime, last 90 days">
+      {{range .Days}}<span class="{{.Class}}" title="{{.Title}}"></span>{{end}}
+    </div>
+    <div class="scale"><span>90 days ago</span><span>today</span></div>
+    <div class="stats">
+      <span>24h <b>{{percent .Uptime24h}}</b></span>
+      <span>7d <b>{{percent .Uptime7d}}</b></span>
+      <span>30d <b>{{percent .Uptime30d}}</b></span>
+      {{if .LatencyMS}}<span>response <b>{{.LatencyMS}} ms</b></span>{{end}}
+      {{if not .CertExpiry.IsZero}}<span>cert expires <b>{{.CertExpiry.Format "Jan 2, 2006"}}</b></span>{{end}}
+      {{.Sparkline}}
+    </div>
+  </section>
+  {{end}}
+
+  <h2>Incidents, last 14 days</h2>
+  <div class="card">
+    {{range .Incidents}}
+    <div class="incident">
+      <b>{{.Check}}</b> · {{if .Ongoing}}<span class="ongoing">ongoing for {{human .Duration}}</span>{{else}}down for {{human .Duration}}{{end}}
+      <div class="when">{{.Started.UTC.Format "Jan 2, 15:04 UTC"}}{{if .Cause}} · {{.Cause}}{{end}}</div>
+    </div>
+    {{else}}
+    <div class="incident">No incidents. 🎉</div>
+    {{end}}
+  </div>
+
+  <footer>
+    Updated {{.Updated.UTC.Format "Jan 2, 15:04:05 UTC"}} · refreshes every minute ·
+    <a href="api/status">JSON</a> ·
+    powered by <a href="https://github.com/AndreaAcanfora/uptimer">uptimer</a>{{if .Version}} {{.Version}}{{end}}
+  </footer>
+</main>
+</body>
+</html>

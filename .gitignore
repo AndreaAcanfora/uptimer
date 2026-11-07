@@ -1,0 +1,7 @@
+/uptimer
+/dist/
+*.db
+*.db-shm
+*.db-wal
+/uptimer.yml
+coverage.out
