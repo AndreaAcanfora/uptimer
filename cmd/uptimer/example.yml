@@ -1,0 +1,49 @@
+# uptimer configuration. Full reference: https://github.com/AndreaAcanfora/uptimer#configuration
+#
+# ${VAR} is replaced with the environment variable VAR: keep tokens and passwords out of this file.
+
+title: My services status
+listen: ":8080"            # status page address
+database: uptimer.db       # SQLite file, created if missing
+retention: 90d             # keep results for 90 days
+
+defaults:
+  interval: 1m             # how often each check runs
+  timeout: 10s
+  failure_threshold: 2     # consecutive failures before alerting (avoids false alarms)
+  cert_expiry_days: 14     # warn when a TLS certificate expires within 14 days
+
+checks:
+  - name: Website
+    url: https://example.com
+
+  - name: API health
+    url: https://api.example.com/health
+    expect_status: [200]
+    contains: '"status":"ok"'   # the response body must contain this text
+    interval: 30s
+
+  - name: Database port
+    type: tcp
+    address: db.example.com:5432
+
+notify:
+  # Telegram: create a bot with @BotFather, send it a message, then get your chat id
+  # from https://api.telegram.org/bot<TOKEN>/getUpdates
+  # telegram:
+  #   bot_token: ${TELEGRAM_BOT_TOKEN}
+  #   chat_id: "123456789"
+
+  # webhooks:
+  #   - url: ${SLACK_WEBHOOK_URL}
+  #     format: slack          # slack, discord or json
+  #   - url: ${DISCORD_WEBHOOK_URL}
+  #     format: discord
+
+  # email:
+  #   host: smtp.gmail.com
+  #   port: 587
+  #   username: you@gmail.com
+  #   password: ${SMTP_PASSWORD}  # for Gmail, an app password
+  #   from: you@gmail.com
+  #   to: [you@gmail.com]
