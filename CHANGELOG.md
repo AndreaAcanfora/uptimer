@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
+- Open Status Document: `/api/v2/summary.json` (components, open and recent incidents, CORS, ETag) and discovery at `/.well-known/status`.
+
 ## 0.1.0 (2026-11-07)
 
 First version.

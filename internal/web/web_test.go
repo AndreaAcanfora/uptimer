@@ -141,3 +141,88 @@ func TestSparkline(t *testing.T) {
 		t.Errorf("sparkline = %s", svg)
 	}
 }
+
+func TestOpenStatusDocument(t *testing.T) {
+	target := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {}))
+	defer target.Close()
+	server := setup(t, target.URL)
+
+	resp, err := http.Get(server.URL + "/api/v2/summary.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	body, _ := io.ReadAll(resp.Body)
+	resp.Body.Close()
+	for header, want := range map[string]string{"Content-Type": "application/json; charset=utf-8", "Access-Control-Allow-Origin": "*", "Cache-Control": "public, max-age=30"} {
+		if got := resp.Header.Get(header); got != want {
+			t.Errorf("%s = %q, want %q", header, got, want)
+		}
+	}
+	var doc struct {
+		OSDVersion string `json:"osd_version"`
+		Page       struct{ Name, URL string }
+		Status     struct{ Indicator, Description string }
+		Components []struct{ ID, Name, Status string }
+		Incidents  []struct {
+			Name, Status, Impact string
+			Components           []struct{ ID, Status string }
+			IncidentUpdates      []struct{ Body string } `json:"incident_updates"`
+		}
+		Maintenances []any `json:"scheduled_maintenances"`
+	}
+	if err := json.Unmarshal(body, &doc); err != nil {
+		t.Fatalf("%v: %s", err, body)
+	}
+	if doc.OSDVersion != "0.1" || doc.Page.Name != "Acme status" || doc.Page.URL != server.URL+"/" || doc.Maintenances == nil {
+		t.Errorf("page %+v", doc)
+	}
+	if doc.Status.Indicator != "major" || doc.Status.Description != "Partial outage: 1 of 2 down" {
+		t.Errorf("status %+v", doc.Status)
+	}
+	statuses := map[string]string{}
+	for _, c := range doc.Components {
+		statuses[c.ID] = c.Status
+	}
+	if statuses["site"] != "operational" || statuses["db"] != "major_outage" {
+		t.Errorf("components %v", statuses)
+	}
+	if len(doc.Incidents) != 1 {
+		t.Fatalf("incidents %+v", doc.Incidents)
+	}
+	inc := doc.Incidents[0]
+	if inc.Name != "Database is down" || inc.Status != "investigating" || inc.Impact != "major" || inc.Components[0].ID != "db" || !strings.Contains(inc.IncidentUpdates[0].Body, "connection failed") {
+		t.Errorf("incident %+v", inc)
+	}
+
+	// Conditional requests.
+	req, _ := http.NewRequest("GET", server.URL+"/api/v2/summary.json", nil)
+	req.Header.Set("If-None-Match", resp.Header.Get("ETag"))
+	again, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	again.Body.Close()
+	if again.StatusCode != http.StatusNotModified {
+		t.Errorf("If-None-Match: %d", again.StatusCode)
+	}
+}
+
+func TestStatusDiscovery(t *testing.T) {
+	server := setup(t, "http://127.0.0.1:1")
+	req, _ := http.NewRequest("GET", server.URL+"/.well-known/status", nil)
+	req.Header.Set("X-Forwarded-Proto", "https")
+	req.Header.Set("X-Forwarded-Host", "status.acme.example")
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+	var doc map[string]string
+	json.NewDecoder(resp.Body).Decode(&doc)
+	want := map[string]string{"osd_version": "0.1", "document": "https://status.acme.example/api/v2/summary.json", "page": "https://status.acme.example/"}
+	for k, v := range want {
+		if doc[k] != v {
+			t.Errorf("%s = %q, want %q", k, doc[k], v)
+		}
+	}
+}
