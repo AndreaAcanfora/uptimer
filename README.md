@@ -35,6 +35,10 @@ phones. No JavaScript._
 - **Status page** with 24h / 7d / 30d uptime, 90 daily bars, response-time chart and incident history.
 - **README badges**: `![status](https://status.example.com/badge/api.svg)` and 30-day uptime badges.
 - **JSON API** at `/api/status` for your own dashboards; `/healthz` for load balancers.
+- **Machine-readable status** in the [Open Status Document](https://github.com/AndreaAcanfora/statusdoc)
+  format at `/api/v2/summary.json`, the shape status page clients already read, with discovery at
+  `/.well-known/status`. Tools can check your status by domain:
+  `statusdoc check status.example.com`.
 - **One static binary** for Linux, macOS, Windows and FreeBSD (amd64 and arm64), or a small Docker image (~15 MB).
   Data in SQLite, pruned automatically after 90 days.
 - **Secrets stay out of the config file**: write `${TELEGRAM_BOT_TOKEN}` and set the environment variable.

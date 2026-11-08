@@ -45,6 +45,8 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /{$}", s.statusPage)
 	mux.HandleFunc("GET /api/status", s.apiStatus)
 	mux.HandleFunc("GET /badge/{file}", s.badge)
+	mux.HandleFunc("GET /api/v2/summary.json", s.osdSummary)
+	mux.HandleFunc("GET /.well-known/status", s.osdDiscovery)
 	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, _ *http.Request) {
 		_, _ = w.Write([]byte("ok\n"))
 	})
