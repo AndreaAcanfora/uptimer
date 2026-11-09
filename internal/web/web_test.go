@@ -263,7 +263,7 @@ func TestHeartbeatPingsConformToOHP(t *testing.T) {
 		}
 	}
 	code, _, body := get(t, server.URL+"/.well-known/ohp")
-	if code != 200 || !strings.Contains(body, `"versions":["0.1"]`) {
+	if code != 200 || !strings.Contains(body, `"versions":["0.2"]`) {
 		t.Errorf("discovery %d %s", code, body)
 	}
 	// The status page shows the heartbeat.

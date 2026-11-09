@@ -1,9 +1,8 @@
 # Changelog
 
-## Unreleased
+## 0.2.0 (2026-11-09)
 
-- Heartbeat checks (`type: heartbeat`, `period`, `grace`, `heartbeat_key`): jobs report with the Open Heartbeat Protocol at `/ping/<key>/<check id>`; down on a reported failure, a missed deadline or a run that does not finish. Conforms to the OHP 0.1 conformance suite.
-
+- Heartbeat checks (`type: heartbeat`, `period`, `grace`, `heartbeat_key`): jobs report with the Open Heartbeat Protocol at `/ping/<key>/<check id>`; down on a reported failure, a missed deadline or a run that does not finish. Conforms to OHP 0.2 (run IDs are UUIDs) and passes its conformance suite.
 - Open Status Document: `/api/v2/summary.json` (components, open and recent incidents, CORS, ETag) and discovery at `/.well-known/status`.
 
 ## 0.1.0 (2026-11-07)
