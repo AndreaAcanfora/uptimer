@@ -33,10 +33,12 @@ const HistoryDays = 90
 type Server struct {
 	Title   string
 	Version string
-	Monitor *monitor.Monitor
-	Store   *store.Store
-	Log     *slog.Logger
-	Now     func() time.Time
+	// HeartbeatKey is the secret in heartbeat ping URLs (empty: no heartbeats).
+	HeartbeatKey string
+	Monitor      *monitor.Monitor
+	Store        *store.Store
+	Log          *slog.Logger
+	Now          func() time.Time
 }
 
 // Handler returns the HTTP routes.
@@ -47,6 +49,9 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /badge/{file}", s.badge)
 	mux.HandleFunc("GET /api/v2/summary.json", s.osdSummary)
 	mux.HandleFunc("GET /.well-known/status", s.osdDiscovery)
+	mux.HandleFunc("/ping/{key}/{id}", s.heartbeat)
+	mux.HandleFunc("/ping/{key}/{id}/{signal}", s.heartbeat)
+	mux.HandleFunc("GET /.well-known/ohp", s.ohpDiscovery)
 	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, _ *http.Request) {
 		_, _ = w.Write([]byte("ok\n"))
 	})

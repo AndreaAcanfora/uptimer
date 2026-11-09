@@ -153,7 +153,7 @@ func serve(ctx context.Context, path string, stderr io.Writer) error {
 	ctx, stop := signal.NotifyContext(ctx, os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
-	site := &web.Server{Title: cfg.Title, Version: version, Monitor: mon, Store: st, Log: log}
+	site := &web.Server{Title: cfg.Title, Version: version, HeartbeatKey: cfg.HeartbeatKey, Monitor: mon, Store: st, Log: log}
 	server := &http.Server{
 		Addr:              cfg.Listen,
 		Handler:           site.Handler(),

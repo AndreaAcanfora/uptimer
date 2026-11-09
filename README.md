@@ -30,6 +30,9 @@ phones. No JavaScript._
 - **No false alarms**: a check is declared down only after N consecutive failures (2 by default).
 - **Alerts on change only**: one message when a service goes down, one when it recovers, with how long it was
   down. Restarting uptimer during an outage doesn't send the alert again.
+- **Heartbeat checks for cron jobs and backups**: the job reports to uptimer with the
+  [Open Heartbeat Protocol](https://github.com/AndreaAcanfora/openheartbeat) (a `curl` is enough), and you are
+  alerted when it fails or does not run on time.
 - **TLS certificate warnings** a configurable number of days before expiry, at most once a day.
 - **Notifications**: Telegram, Slack, Discord, any webhook (JSON), email over SMTP.
 - **Status page** with 24h / 7d / 30d uptime, 90 daily bars, response-time chart and incident history.
@@ -105,6 +108,13 @@ checks:
     type: tcp
     address: db.example.com:5432
 
+  - name: Nightly backup
+    type: heartbeat           # the job pings uptimer, see "Heartbeats" below
+    period: 24h
+    grace: 1h
+
+heartbeat_key: ${UPTIMER_HEARTBEAT_KEY}   # secret part of heartbeat URLs
+
 notify:
   telegram:
     bot_token: ${TELEGRAM_BOT_TOKEN}
@@ -125,7 +135,7 @@ notify:
 | --- | --- | --- |
 | `name` | (required) | shown on the page and in alerts |
 | `id` | from the name | URL-safe id for badges and the API (`My API` → `my-api`) |
-| `type` | `http` | `http` or `tcp` |
+| `type` | `http` | `http`, `tcp` or `heartbeat` |
 | `url` | | HTTP(S) URL to request (`http`) |
 | `method`, `headers` | `GET` | request method and extra headers |
 | `expect_status` | any 2xx or 3xx | list of acceptable status codes |
@@ -134,6 +144,8 @@ notify:
 | `interval`, `timeout` | `1m`, `10s` | how often, and how long to wait; durations like `30s`, `5m`, `2h`, `7d` |
 | `failure_threshold` | `2` | consecutive failures before alerting |
 | `cert_expiry_days` | `14` | warn when the TLS certificate expires within this many days |
+| `period` | | `heartbeat`: how often the job is expected to succeed |
+| `grace` | ¼ of the period, 1m to 1h | `heartbeat`: how late a ping may be before alerting |
 
 The configuration is checked strictly: unknown fields, invalid URLs, duplicate ids and unset `${VARIABLES}` are
 reported at startup with what to fix.
@@ -147,6 +159,27 @@ reported at startup with what to fix.
 4. Put both in `notify.telegram`, with the token in an environment variable.
 
 </details>
+
+### Heartbeats
+
+For jobs that run on their own (cron, backups, queue workers), add a `heartbeat` check
+and a secret `heartbeat_key` (at least 16 letters, digits, `-` or `_`). Each job then
+reports to `https://status.example.com/ping/<heartbeat_key>/<check id>`, following the
+[Open Heartbeat Protocol](https://github.com/AndreaAcanfora/openheartbeat/blob/master/SPEC.md):
+
+```sh
+# The simplest form: one request when the job succeeds.
+0 3 * * * /usr/local/bin/backup.sh && curl -fsS -m 10 --retry 5 https://status.example.com/ping/$KEY/nightly-backup
+
+# Or wrap the job with ohp: start, exit code, duration and the end of the output.
+0 3 * * * OHP_URL=https://status.example.com/ping/$KEY/nightly-backup ohp run -- /usr/local/bin/backup.sh
+```
+
+The check goes **down** as soon as the job reports a failure (`/fail` or a non-zero exit
+code, with the most relevant line of output as the cause), when no success arrives within
+`period` + `grace`, or when a run started and did not finish within `grace`. A heartbeat
+that never pinged stays unknown and does not alert. Recovery and downtime are reported
+like any other check.
 
 ### Alerts
 
