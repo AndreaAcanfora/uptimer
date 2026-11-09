@@ -99,3 +99,37 @@ func TestSlug(t *testing.T) {
 		t.Errorf("Slug = %q", got)
 	}
 }
+
+func TestHeartbeatChecks(t *testing.T) {
+	cfg, err := Parse([]byte(`
+heartbeat_key: 0123456789abcdef
+checks:
+  - name: Nightly backup
+    type: heartbeat
+    period: 24h
+  - name: Every five minutes
+    type: heartbeat
+    period: 5m
+    grace: 30s
+`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	b, f := cfg.Checks[0], cfg.Checks[1]
+	if b.ID != "nightly-backup" || b.Grace.Std() != time.Hour || b.FailureThreshold != 1 || b.Target() != "heartbeat every 1d" {
+		t.Errorf("defaults %+v %s", b, b.Target())
+	}
+	if f.Grace.Std() != 30*time.Second || f.Target() != "heartbeat every 5m" {
+		t.Errorf("explicit grace %+v %s", f, f.Target())
+	}
+	for name, yml := range map[string]string{
+		"no key":       "checks:\n  - name: x\n    type: heartbeat\n    period: 1h\n",
+		"short key":    "heartbeat_key: short\nchecks:\n  - name: x\n    type: heartbeat\n    period: 1h\n",
+		"bad key":      "heartbeat_key: \"0123456789abcdef/x\"\nchecks:\n  - name: x\n    type: heartbeat\n    period: 1h\n",
+		"short period": "heartbeat_key: 0123456789abcdef\nchecks:\n  - name: x\n    type: heartbeat\n    period: 5s\n",
+	} {
+		if _, err := Parse([]byte(yml)); err == nil {
+			t.Errorf("%s: accepted", name)
+		}
+	}
+}

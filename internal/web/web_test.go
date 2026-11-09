@@ -12,6 +12,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/AndreaAcanfora/openheartbeat/conformance"
 	"github.com/AndreaAcanfora/uptimer/internal/config"
 	"github.com/AndreaAcanfora/uptimer/internal/monitor"
 	"github.com/AndreaAcanfora/uptimer/internal/store"
@@ -224,5 +225,49 @@ func TestStatusDiscovery(t *testing.T) {
 		if doc[k] != v {
 			t.Errorf("%s = %q, want %q", k, doc[k], v)
 		}
+	}
+}
+
+func TestHeartbeatPingsConformToOHP(t *testing.T) {
+	st, err := store.Open(filepath.Join(t.TempDir(), "hb.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = st.Close() })
+	checks := []config.Check{{ID: "backup", Name: "Nightly backup", Type: "heartbeat",
+		Period: config.Duration(24 * time.Hour), Grace: config.Duration(time.Hour), FailureThreshold: 1}}
+	m := monitor.New(checks, st, nil, slog.New(slog.NewTextHandler(io.Discard, nil)))
+	site := &Server{Title: "Acme", HeartbeatKey: "0123456789abcdef", Monitor: m, Store: st, Log: slog.New(slog.NewTextHandler(io.Discard, nil))}
+	server := httptest.NewServer(site.Handler())
+	defer server.Close()
+	checkURL := server.URL + "/ping/0123456789abcdef/backup"
+
+	results, err := conformance.Run(context.Background(), server.Client(), checkURL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, r := range results {
+		if !r.Passed {
+			t.Errorf("%s %s: %s", r.Level, r.Name, r.Detail)
+		}
+	}
+	// The suite ends with a success: the check is up.
+	if s := m.States()[0]; s.Status != monitor.Up {
+		t.Errorf("state after the suite: %s", s.Status)
+	}
+
+	// A wrong key is a 404, and so is a check that is not a heartbeat.
+	for _, u := range []string{server.URL + "/ping/wrong-key-0123456/backup", server.URL + "/ping/0123456789abcdef/site"} {
+		if code, _, _ := get(t, u); code != http.StatusNotFound {
+			t.Errorf("GET %s = %d", u, code)
+		}
+	}
+	code, _, body := get(t, server.URL+"/.well-known/ohp")
+	if code != 200 || !strings.Contains(body, `"versions":["0.1"]`) {
+		t.Errorf("discovery %d %s", code, body)
+	}
+	// The status page shows the heartbeat.
+	if _, _, page := get(t, server.URL+"/"); !strings.Contains(page, "heartbeat every 1d") {
+		t.Error("status page does not describe the heartbeat")
 	}
 }

@@ -60,6 +60,9 @@ type Config struct {
 	Defaults  Defaults  `yaml:"defaults"`
 	Checks    []Check   `yaml:"checks"`
 	Notify    Notifiers `yaml:"notify"`
+	// HeartbeatKey is the secret part of heartbeat ping URLs
+	// (/ping/<key>/<check id>). Required when a check has type heartbeat.
+	HeartbeatKey string `yaml:"heartbeat_key"`
 }
 
 // Defaults apply to every check that does not set its own value.
@@ -74,8 +77,13 @@ type Defaults struct {
 type Check struct {
 	ID   string `yaml:"id"`
 	Name string `yaml:"name"`
-	// Type is "http" (default when URL is set) or "tcp".
+	// Type is "http" (default when URL is set), "tcp" or "heartbeat".
 	Type string `yaml:"type"`
+
+	// Heartbeat checks are passive: the job pings uptimer (Open Heartbeat
+	// Protocol) and is down when it reports a failure or misses Period + Grace.
+	Period Duration `yaml:"period"`
+	Grace  Duration `yaml:"grace"`
 
 	// HTTP checks.
 	URL          string            `yaml:"url"`
@@ -95,10 +103,23 @@ type Check struct {
 
 // Target is what the check points at, for display.
 func (c Check) Target() string {
-	if c.Type == "tcp" {
+	switch c.Type {
+	case "tcp":
 		return c.Address
+	case "heartbeat":
+		return "heartbeat every " + HumanPeriod(c.Period.Std())
 	}
 	return c.URL
+}
+
+// HumanPeriod formats a period as "24h", "30m" or "7d".
+func HumanPeriod(d time.Duration) string {
+	if d >= 24*time.Hour && d%(24*time.Hour) == 0 {
+		return fmt.Sprintf("%dd", d/(24*time.Hour))
+	}
+	s := d.String()
+	s = strings.TrimSuffix(s, "0s")
+	return strings.TrimSuffix(s, "0m")
 }
 
 // Notifiers lists where alerts go. Every configured channel receives every alert.
@@ -129,6 +150,8 @@ type Email struct {
 	From     string   `yaml:"from"`
 	To       []string `yaml:"to"`
 }
+
+var keyPattern = regexp.MustCompile(`^[A-Za-z0-9_-]+$`)
 
 var envPattern = regexp.MustCompile(`\$\{([A-Za-z_][A-Za-z0-9_]*)\}`)
 
@@ -242,6 +265,14 @@ func (c *Config) applyDefaults() {
 		if check.CertExpiryDays == 0 {
 			check.CertExpiryDays = c.Defaults.CertExpiryDays
 		}
+		if check.Type == "heartbeat" {
+			// One failure report is enough; a quarter of the period, between
+			// one minute and one hour, is the default grace.
+			check.FailureThreshold = 1
+			if check.Grace == 0 {
+				check.Grace = Duration(min(max(check.Period.Std()/4, time.Minute), time.Hour))
+			}
+		}
 	}
 	for i := range c.Notify.Webhooks {
 		hook := &c.Notify.Webhooks[i]
@@ -291,8 +322,19 @@ func (c *Config) validate() error {
 			if _, _, err := net.SplitHostPort(check.Address); err != nil {
 				problems = append(problems, fmt.Errorf("%s: address must be host:port", where))
 			}
+		case "heartbeat":
+			if check.Period.Std() < 10*time.Second {
+				problems = append(problems, fmt.Errorf("%s: heartbeat checks need a period of at least 10s", where))
+			}
+			if check.Grace.Std() < 0 {
+				problems = append(problems, fmt.Errorf("%s: grace cannot be negative", where))
+			}
+			if len(c.HeartbeatKey) < 16 || !keyPattern.MatchString(c.HeartbeatKey) {
+				problems = append(problems, fmt.Errorf("%s: heartbeat checks need heartbeat_key: at least 16 letters, digits, - or _", where))
+			}
+			continue // interval and timeout do not apply
 		default:
-			problems = append(problems, fmt.Errorf("%s: unknown type %q (http or tcp)", where, check.Type))
+			problems = append(problems, fmt.Errorf("%s: unknown type %q (http, tcp or heartbeat)", where, check.Type))
 		}
 		if check.Interval.Std() < time.Second {
 			problems = append(problems, fmt.Errorf("%s: interval must be at least 1s", where))

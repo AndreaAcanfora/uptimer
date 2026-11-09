@@ -269,6 +269,27 @@ func (s *Store) LastResult(ctx context.Context, checkID string) (*check.Result, 
 	return &r, nil
 }
 
+// LastSuccess returns the most recent successful result of a check, or nil.
+func (s *Store) LastSuccess(ctx context.Context, checkID string) (*check.Result, error) {
+	var (
+		r       check.Result
+		at, lat int64
+	)
+	err := s.db.QueryRowContext(ctx,
+		`SELECT check_id, at, ok, latency_ms, status_code, error FROM results
+		 WHERE check_id = ? AND ok = 1 ORDER BY at DESC LIMIT 1`, checkID).
+		Scan(&r.CheckID, &at, &r.OK, &lat, &r.StatusCode, &r.Error)
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	r.At = time.UnixMilli(at)
+	r.Latency = time.Duration(lat) * time.Millisecond
+	return &r, nil
+}
+
 // Prune deletes results and resolved incidents older than before.
 func (s *Store) Prune(ctx context.Context, before time.Time) (int64, error) {
 	res, err := s.db.ExecContext(ctx, `DELETE FROM results WHERE at < ?`, before.UnixMilli())

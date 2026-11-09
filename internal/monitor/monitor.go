@@ -31,6 +31,10 @@ type State struct {
 	Last       *check.Result
 	Failures   int // consecutive failed probes
 	CertExpiry time.Time
+
+	// Heartbeat checks only.
+	LastSuccess time.Time
+	Runs        map[string]time.Time // run ID ("" without one) → start
 }
 
 // Sender delivers alerts (notify.Multi in production).
@@ -97,6 +101,14 @@ func (m *Monitor) Restore(ctx context.Context) error {
 		case last != nil && last.OK:
 			state.Status = Up
 		}
+		if c.Type == "heartbeat" {
+			if success, err := m.store.LastSuccess(ctx, c.ID); err != nil {
+				m.mu.Unlock()
+				return err
+			} else if success != nil {
+				state.LastSuccess = success.At
+			}
+		}
 		m.mu.Unlock()
 	}
 	return nil
@@ -106,12 +118,20 @@ func (m *Monitor) Restore(ctx context.Context) error {
 func (m *Monitor) Run(ctx context.Context) {
 	var wg sync.WaitGroup
 	for _, c := range m.checks {
+		if c.Type == "heartbeat" {
+			continue // passive: see Heartbeat and heartbeatLoop
+		}
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
 			m.loop(ctx, c)
 		}()
 	}
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		m.heartbeatLoop(ctx)
+	}()
 	wg.Wait()
 }
 
